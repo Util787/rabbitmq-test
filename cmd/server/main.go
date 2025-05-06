@@ -26,6 +26,7 @@ func main() {
 	sig := <-signalChan
 	log.Println("Received signal :", sig)
 	log.Println("Shutting down the programm")
+	log.Print("test text")
 
 	//better this logic:
 	//make chan without buf
