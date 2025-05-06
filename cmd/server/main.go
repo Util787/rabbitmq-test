@@ -24,7 +24,7 @@ func main() {
 	signalChan := make(chan os.Signal, 1)
 	signal.Notify(signalChan, syscall.SIGINT)
 	sig := <-signalChan
-	log.Println("Received signal:", sig)
+	log.Println("Received signal :", sig)
 	log.Println("Shutting down the programm")
 
 	//better this logic:
