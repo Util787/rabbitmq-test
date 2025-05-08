@@ -38,5 +38,5 @@ func main() {
 	}
 	fmt.Println("Created: ", subChan, subQueue)
 
-	time.Sleep(50 * time.Second)
+	time.Sleep(5 * time.Minute)
 }
