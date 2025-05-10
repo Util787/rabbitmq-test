@@ -15,6 +15,14 @@ const (
 	TransientQueue                  // 1
 )
 
+type AckType int
+
+const (
+	Ack         AckType = iota // 0
+	NackRequeue                // 1
+	NackDiscard                // 2
+)
+
 func PublishJSON[T any](ch *amqp.Channel, exchange, key string, val T) error {
 	data, err := json.Marshal(val)
 	if err != nil {
@@ -53,7 +61,11 @@ func DeclareAndBind(
 		exclusive = true
 	}
 
-	newQueue, err := newChan.QueueDeclare(queueName, isDurable, autoDelete, exclusive, false, nil)
+	tab := amqp.Table{}
+	// pass the name of your dead letter exchange as value
+	tab["x-dead-letter-exchange"] = "peril_dlx"
+
+	newQueue, err := newChan.QueueDeclare(queueName, isDurable, autoDelete, exclusive, false, tab)
 	if err != nil {
 		return nil, amqp.Queue{}, err
 	}
@@ -71,7 +83,7 @@ func SubscribeJSON[T any](
 	queueName,
 	key string,
 	simpleQueueType QueueType, // an enum to represent "durable" or "transient"
-	handler func(T),
+	handler func(T) AckType,
 ) (*amqp.Channel, amqp.Queue, error) {
 	AMQPChann, AMPQQueue, err := DeclareAndBind(conn, exchange, queueName, key, simpleQueueType)
 	if err != nil {
@@ -91,8 +103,21 @@ func SubscribeJSON[T any](
 				log.Println("Cant Unmarshal in goroutine: ", err)
 				continue
 			}
-			handler(message)
-			delivery.Ack(false)
+
+			ackType := handler(message)
+
+			switch ackType {
+			case Ack:
+				delivery.Ack(false)
+				log.Println("Ack occured")
+			case NackRequeue:
+				delivery.Nack(false, true)
+				log.Println("NackRequeue occured")
+			case NackDiscard:
+				delivery.Nack(false, false)
+				log.Println("NackDiscard occured")
+			}
+
 		}
 	}()
 	return AMQPChann, AMPQQueue, nil
