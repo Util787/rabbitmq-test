@@ -5,8 +5,23 @@ import (
 	"fmt"
 )
 
+var PossibleUnits = map[string]struct{}{
+	"infantry":  {},
+	"cavalry":   {},
+	"artillery": {},
+}
+
+var PossibleLocations = map[string]struct{}{
+	"americas":   {},
+	"europe":     {},
+	"africa":     {},
+	"asia":       {},
+	"antarctica": {},
+	"australia":  {},
+}
+
 func (gs *GameState) CommandSpawn(words []string) error {
-	if len(words) < 3 {
+	if len(words) < 3 { //idk why author put it here if I need to check the possible words anyway
 		return errors.New("usage: spawn <location> <rank>")
 	}
 

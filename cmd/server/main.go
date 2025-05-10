@@ -18,27 +18,30 @@ func main() {
 
 	connectionString := "amqp://guest:guest@localhost:5672/"
 
-	exchange := routing.ExchangePerilDirect
+	// exchanges
+	perilDirectExchange := routing.ExchangePerilDirect
+	perilTopicExchange := routing.ExchangePerilTopic
 
 	RMQConnection, err := amqp.Dial(connectionString)
 	if err != nil {
-		log.Fatal("Failed to create connection with AMPQ URI on server")
+		log.Fatal("Failed to create connection with AMPQ URI on server: ", err)
 	}
 	defer RMQConnection.Close()
 	log.Println("AMQP URI connected successfully on server")
 
 	go sigIntHandle(RMQConnection)
 
-	pubChan, err := RMQConnection.Channel()
+	pubPauseAndResumeChan, err := RMQConnection.Channel()
 	if err != nil {
-		log.Fatal("Failed to create RMQ channel on server")
+		log.Fatal("Failed to create RMQ channel on server: ", err)
 	}
 
-	err = PublishPauseMessage(pubChan, exchange, routing.PauseKey)
+	_, _, err = pubsub.DeclareAndBind(RMQConnection, perilTopicExchange, "game_logs", "game_logs.*", pubsub.DurableQueue)
 	if err != nil {
-		log.Println("Failed to publish message on server")
+		log.Println("Failed to declare and bind: ", err)
 	}
 
+	// command processing loop
 	gamelogic.PrintServerHelp()
 	for {
 		input := gamelogic.GetInput()
@@ -47,19 +50,18 @@ func main() {
 		}
 		switch input[0] {
 		case "pause":
-			err = PublishPauseMessage(pubChan, exchange, routing.PauseKey)
+			err = PublishPauseMessage(pubPauseAndResumeChan, perilDirectExchange, routing.PauseKey)
 			if err != nil {
-				log.Println("Failed to publish message on server")
+				log.Println("Failed to publish message on server: ", err)
 			}
 		case "resume":
-			err = PublishResumeMessage(pubChan, exchange, routing.PauseKey)
+			err = PublishResumeMessage(pubPauseAndResumeChan, perilDirectExchange, routing.PauseKey)
 			if err != nil {
-				log.Println("Failed to publish message on server")
+				log.Println("Failed to publish message on server: ", err)
 			}
 		case "quit":
 			log.Println("Quitting")
-			RMQConnection.Close()
-			os.Exit(1)
+			return
 		default:
 			log.Println("Unknown command")
 		}

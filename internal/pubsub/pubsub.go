@@ -3,6 +3,7 @@ package pubsub
 import (
 	"context"
 	"encoding/json"
+	"log"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 )
@@ -37,7 +38,7 @@ func DeclareAndBind(
 	key string,
 	simpleQueueType QueueType, // an enum to represent "durable" or "transient"
 ) (*amqp.Channel, amqp.Queue, error) {
-	
+
 	newChan, err := conn.Channel()
 	if err != nil {
 		return nil, amqp.Queue{}, err
@@ -62,4 +63,37 @@ func DeclareAndBind(
 		return nil, amqp.Queue{}, err
 	}
 	return newChan, newQueue, nil
+}
+
+func SubscribeJSON[T any](
+	conn *amqp.Connection,
+	exchange,
+	queueName,
+	key string,
+	simpleQueueType QueueType, // an enum to represent "durable" or "transient"
+	handler func(T),
+) (*amqp.Channel, amqp.Queue, error) {
+	AMQPChann, AMPQQueue, err := DeclareAndBind(conn, exchange, queueName, key, simpleQueueType)
+	if err != nil {
+		return nil, amqp.Queue{}, err
+	}
+
+	delChan, err := AMQPChann.Consume(queueName, "", false, false, false, false, nil)
+	if err != nil {
+		return nil, amqp.Queue{}, err
+	}
+
+	go func() {
+		for delivery := range delChan {
+			var message T
+			err := json.Unmarshal(delivery.Body, &message)
+			if err != nil {
+				log.Println("Cant Unmarshal in goroutine: ", err)
+				continue
+			}
+			handler(message)
+			delivery.Ack(false)
+		}
+	}()
+	return AMQPChann, AMPQQueue, nil
 }
