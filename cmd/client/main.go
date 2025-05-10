@@ -50,11 +50,14 @@ func main() {
 	}
 
 	//here a subscribe channel created
-	_, _, err = pubsub.SubscribeJSON(RMQConnection, perilTopicExchange, moveQueueName, moveRoutingKey, pubsub.TransientQueue, handlerMove(gameState, pubMoveChan, username))
+	_, _, err = pubsub.SubscribeJSON(RMQConnection, perilTopicExchange, moveQueueName, moveRoutingKey, pubsub.TransientQueue, handlerMove(gameState, RMQConnection, username))
 	if err != nil {
 		log.Println("Failed to subscribe: ", err)
 	}
-	_, _, err = pubsub.SubscribeJSON(RMQConnection, perilTopicExchange, "war", "war.*", pubsub.DurableQueue, handlerWar(gameState))
+
+	// war channel
+
+	_, _, err = pubsub.SubscribeJSON(RMQConnection, perilTopicExchange, routing.WarRecognitionsPrefix, routing.WarRecognitionsPrefix+".*", pubsub.DurableQueue, handlerWar(gameState))
 	if err != nil {
 		log.Println("Failed to subscribe: ", err)
 	}
@@ -90,6 +93,7 @@ func main() {
 			if err != nil {
 				log.Println("Failed to execute spawn command: ", err)
 			}
+
 		case "move":
 			move, err := gameState.CommandMove(input)
 			if err != nil {
@@ -102,12 +106,16 @@ func main() {
 				continue
 			}
 			fmt.Printf("User: %v moved units:%v to location: %v\n", username, move.Units, move.ToLocation)
+
 		case "status":
 			gameState.CommandStatus()
+
 		case "help":
 			gamelogic.PrintClientHelp()
+
 		case "spam":
 			fmt.Println("Spamming not allowed yet!")
+
 		case "quit":
 			gamelogic.PrintQuit()
 			return
@@ -125,7 +133,7 @@ func handlerPause(gs *gamelogic.GameState) func(routing.PlayingState) pubsub.Ack
 	}
 }
 
-func handlerMove(gs *gamelogic.GameState, ch *amqp.Channel, username string) func(gamelogic.ArmyMove) pubsub.AckType {
+func handlerMove(gs *gamelogic.GameState, conn *amqp.Connection, username string) func(gamelogic.ArmyMove) pubsub.AckType {
 	return func(move gamelogic.ArmyMove) pubsub.AckType {
 		defer fmt.Println("> ")
 
@@ -136,14 +144,25 @@ func handlerMove(gs *gamelogic.GameState, ch *amqp.Channel, username string) fun
 		switch moveOutcome {
 		case gamelogic.MoveOutComeSafe:
 			ackType = pubsub.Ack
+
 		case gamelogic.MoveOutcomeMakeWar:
 			ackType = pubsub.Ack
-			err := pubsub.PublishJSON(ch, routing.ExchangePerilTopic, makeWarRoutingKey, move)
+
+			ch, _, err := pubsub.DeclareAndBind(conn, routing.ExchangePerilTopic, routing.WarRecognitionsPrefix, routing.WarRecognitionsPrefix+".*", pubsub.DurableQueue)
 			if err != nil {
+				log.Println("Error during MoveOutcomeMakeWar in move handler: ", err)
 				ackType = pubsub.NackRequeue
 			}
+
+			err = pubsub.PublishJSON(ch, routing.ExchangePerilTopic, makeWarRoutingKey, gamelogic.RecognitionOfWar{Attacker: move.Player, Defender: gs.Player})
+			if err != nil {
+				log.Println("Error during MoveOutcomeMakeWar in move handler: ", err)
+				ackType = pubsub.NackRequeue
+			}
+
 		case gamelogic.MoveOutcomeSamePlayer:
 			ackType = pubsub.NackDiscard
+
 		default:
 			ackType = pubsub.NackDiscard
 		}
@@ -160,14 +179,19 @@ func handlerWar(gs *gamelogic.GameState) func(gamelogic.RecognitionOfWar) pubsub
 		switch outcome {
 		case gamelogic.WarOutcomeNotInvolved:
 			ackType = pubsub.NackRequeue
+
 		case gamelogic.WarOutcomeNoUnits:
 			ackType = pubsub.NackDiscard
+
 		case gamelogic.WarOutcomeOpponentWon:
 			ackType = pubsub.Ack
+
 		case gamelogic.WarOutcomeYouWon:
 			ackType = pubsub.Ack
+
 		case gamelogic.WarOutcomeDraw:
 			ackType = pubsub.Ack
+
 		default:
 			log.Println("Error")
 			ackType = pubsub.NackDiscard
