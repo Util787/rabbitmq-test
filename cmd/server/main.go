@@ -20,7 +20,7 @@ func main() {
 
 	// exchanges
 	perilDirectExchange := routing.ExchangePerilDirect
-	// perilTopicExchange := routing.ExchangePerilTopic
+	perilTopicExchange := routing.ExchangePerilTopic
 
 	RMQConnection, err := amqp.Dial(connectionString)
 	if err != nil {
@@ -36,10 +36,12 @@ func main() {
 		log.Fatal("Failed to create RMQ channel on server: ", err)
 	}
 
-	// _, _, err = pubsub.DeclareAndBind(RMQConnection, perilTopicExchange, "game_logs", "game_logs.*", pubsub.DurableQueue)
-	// if err != nil {
-	// 	log.Println("Failed to declare and bind: ", err)
-	// }
+	// logs channel
+	_, _, err = pubsub.DeclareAndBind(RMQConnection, perilTopicExchange, "game_logs", "game_logs.*", pubsub.DurableQueue)
+	if err != nil {
+		log.Println("Failed to declare and bind: ", err)
+	}
+	pubsub.SubscribeGob(RMQConnection, perilTopicExchange, "game_logs", "game_logs"+".*", pubsub.DurableQueue, handlerLogs(), pubsub.GobDecode())
 
 	// command processing loop
 	gamelogic.PrintServerHelp()
@@ -68,6 +70,15 @@ func main() {
 
 	}
 
+}
+
+func handlerLogs() func(log routing.GameLog) pubsub.AckType {
+	return func(log routing.GameLog) pubsub.AckType {
+		defer fmt.Println("> ")
+
+		gamelogic.WriteLog(log)
+		return pubsub.Ack
+	}
 }
 
 func sigIntHandle(RMQConnection *amqp.Connection) {
