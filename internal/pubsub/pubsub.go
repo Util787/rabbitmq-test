@@ -134,6 +134,8 @@ func SubscribeJSON[T any](
 		return nil, amqp.Queue{}, err
 	}
 
+	AMQPChann.Qos(10, 0, false)
+
 	delChan, err := AMQPChann.Consume(queueName, "", false, false, false, false, nil)
 	if err != nil {
 		return nil, amqp.Queue{}, err
@@ -177,6 +179,11 @@ func SubscribeGob[T any](conn *amqp.Connection,
 	AMQPChann, AMPQQueue, err := DeclareAndBind(conn, exchange, queueName, key, simpleQueueType)
 	if err != nil {
 		return nil, amqp.Queue{}, err
+	}
+
+	err = AMQPChann.Qos(10, 0, false)
+	if err != nil {
+		log.Println("Failed to Qos: ", err)
 	}
 
 	delChan, err := AMQPChann.Consume(queueName, "", false, false, false, false, nil)
