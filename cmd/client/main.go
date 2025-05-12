@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"strconv"
 	"time"
 
 	"github.com/bootdotdev/learn-pub-sub-starter/internal/gamelogic"
@@ -68,6 +69,11 @@ func main() {
 		log.Println("Failed to subscribe: ", err)
 	}
 
+	pubLogChan, err := RMQConnection.Channel()
+	if err != nil {
+		log.Println("Failed to create pubLogChan: ", err)
+	}
+
 	// command processing loop
 	//---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 	for {
@@ -106,6 +112,7 @@ func main() {
 				log.Println("Failed to execute move command: ", err)
 				continue
 			}
+
 			err = pubsub.PublishJSON(pubMoveChan, perilTopicExchange, moveRoutingKey, move)
 			if err != nil {
 				log.Println("Failed to publish the move")
@@ -120,7 +127,22 @@ func main() {
 			gamelogic.PrintClientHelp()
 
 		case "spam":
-			fmt.Println("Spamming not allowed yet!")
+			if len(input) < 2 {
+				fmt.Println("Wrong syntax, usage: spam <number>")
+			}
+
+			n, err := strconv.Atoi(input[1])
+			if err != nil {
+				fmt.Println("Wrong syntax, usage: spam <number>")
+			}
+
+			for ; n > 0; n-- {
+				spamLog := gamelogic.GetMaliciousLog()
+				err = pubsub.PublishGob(pubLogChan, routing.ExchangePerilTopic, routing.GameLogSlug+"."+username, routing.GameLog{CurrentTime: time.Now(), Message: spamLog})
+				if err != nil {
+					log.Println("Failed to publish spam log: ", err)
+				}
+			}
 
 		case "quit":
 			gamelogic.PrintQuit()
@@ -139,7 +161,6 @@ func handlerPause(gs *gamelogic.GameState) func(routing.PlayingState) pubsub.Ack
 	}
 }
 
-// accepts a war channel
 func handlerMove(gs *gamelogic.GameState, warChan *amqp.Channel, username string) func(gamelogic.ArmyMove) pubsub.AckType {
 	return func(move gamelogic.ArmyMove) pubsub.AckType {
 		defer fmt.Println("> ")
